@@ -1,0 +1,825 @@
+<!DOCTYPE html>
+<!-- =====================================================================
+     morpheme-machine-lab.html  --  Guided word-decomposition lab, Grade 7 ELA
+     ---------------------------------------------------------------------
+     Audience: grade 7.  Structure mirrors coulombs-law-lab.html:
+        left  = a live engine you manipulate
+        right = predict -> investigate -> explain -> check stations
+        localStorage answers + printable lab report.
+
+     DESIGN NOTE (why a *decomposer*, not a free builder):
+        Morphology is NOT freely combinatorial -- you cannot bolt any affix
+        onto any root and get a real word.  So instead of letting students
+        assemble nonsense ("spectly", "uncredible"), the machine takes a bank
+        of *real, vetted* words and splits each into its true morphemes, with
+        real meanings and a real example sentence.  Every state of the engine
+        is therefore a genuine English word.  This matches the actual standard
+        (2024 VA SOL 7.RV.1.C: predict the meaning of unfamiliar words from
+        Greek/Latin roots and affixes), and the Feynman loop of the physics
+        lab: predict first, then test, then explain.
+
+     Role colour-coding follows the house CVD-safe framework (physcolor.css):
+        ROOT = source (vermillion, the core meaning) ·
+        PREFIX = relation (green, steers direction/negation/number) ·
+        SUFFIX = constant/operator (gray, sets the grammatical job) ·
+        MEANING-IN-CONTEXT = response/field (blue, the realized result).
+     Colour never rides alone: each tile is labelled and positioned by role.
+     Self-contained single file; no external dependencies.
+     ===================================================================== -->
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Morpheme Machine — A Grade 7 Word Lab</title>
+
+<style>
+  :root{
+    /* house CVD-safe palette (Formatting/ColorCoding/physcolor.css) */
+    --phys-source:#D55E00;   /* ROOT   — the core meaning      */
+    --phys-relation:#009E73; /* PREFIX — steers the meaning    */
+    --phys-const:#4D4D4D;    /* SUFFIX — sets the grammar job  */
+    --phys-field:#0072B2;    /* MEANING in context (result)    */
+    --ink:#222; --muted:#666; --panel:#f7f7f5; --line:#ccc; --soft:#faf9f6;
+  }
+  *{box-sizing:border-box;}
+  body{ font:16px/1.6 Georgia, serif; color:var(--ink); margin:0; background:#fff; }
+  .m-root{color:var(--phys-source);} .m-prefix{color:var(--phys-relation);}
+  .m-suffix{color:var(--phys-const);} .m-mean{color:var(--phys-field);}
+
+  header.top{ max-width:74rem; margin:0 auto; padding:1.4rem 1rem .6rem; }
+  header.top h1{ font-size:1.55rem; margin:0; }
+  header.top .sub{ color:var(--muted); margin:.15rem 0 0; font-size:.95rem; }
+  .feyn{ background:var(--soft); border:1px solid #eee; border-radius:8px;
+         padding:.6rem .9rem; margin:.8rem 0 .2rem; font-size:.9rem; color:#444; }
+  .feyn b{ color:var(--phys-const); }
+  .feyn .loop{ display:flex; gap:.4rem; flex-wrap:wrap; margin-top:.35rem; }
+  .feyn .loop span{ background:#fff; border:1px solid var(--line); border-radius:14px;
+                    padding:.05em .7em; font-size:.82rem; }
+
+  .namebar{ max-width:74rem; margin:.4rem auto 0; padding:0 1rem; display:flex; gap:1rem;
+            flex-wrap:wrap; align-items:center; font-size:.9rem; }
+  .namebar input{ font:inherit; font-size:.9rem; padding:.2em .5em; border:1px solid var(--line);
+                  border-radius:5px; }
+  .progress{ flex:1 1 12rem; height:9px; background:#eee; border-radius:6px; overflow:hidden; min-width:8rem;}
+  .progress > i{ display:block; height:100%; width:0; background:var(--phys-relation); transition:width .3s;}
+  .linkbtn{ background:none; border:none; color:var(--phys-field); cursor:pointer; font:inherit;
+            font-size:.85rem; text-decoration:underline; padding:0;}
+
+  /* ---- two-column workbench ---- */
+  .wrap{ max-width:74rem; margin:1rem auto; padding:0 1rem; display:grid;
+         grid-template-columns: 480px minmax(0,1fr); gap:1.4rem; align-items:start; }
+  @media (max-width:900px){ .wrap{ grid-template-columns:1fr; } }
+
+  .machine{ position:sticky; top:.8rem; }
+  .simhint{ background:#eef6ff; border:1px solid #cfe3f7; border-left:4px solid var(--phys-field);
+            border-radius:6px; padding:.5rem .8rem; font-size:.9rem; margin-bottom:.5rem; }
+  .simhint b{ color:var(--phys-field); }
+
+  .legend{ font-size:.8rem; color:#444; margin:0 0 .55rem; line-height:1.7;
+           background:#fff; border:1px solid var(--line); border-radius:6px; padding:.45rem .65rem; }
+  .legend .sw{ display:inline-block; width:.85em; height:.85em; border-radius:3px; margin-right:.25em;
+               vertical-align:-1px; border:1px solid rgba(0,0,0,.15);}
+
+  .panel{ border:1px solid var(--line); border-radius:8px; background:#fff; padding:.85rem; }
+  .wordpick{ display:flex; align-items:center; gap:.5rem; flex-wrap:wrap; margin-bottom:.6rem; }
+  .wordpick label{ font-size:.82rem; color:#555; text-transform:uppercase; letter-spacing:.04em;}
+  select{ font:inherit; font-size:.95rem; border:1px solid var(--line); border-radius:7px;
+          background:#fff; padding:.35em .5em; flex:1 1 12rem; }
+
+  /* morpheme tiles */
+  .tiles{ display:flex; flex-wrap:wrap; gap:.4rem; align-items:stretch; justify-content:center;
+          margin:.4rem 0 .55rem; }
+  .tile{ position:relative; border-radius:9px; padding:.5rem .8rem .42rem; min-width:4.6rem; text-align:center;
+         cursor:pointer; font:inherit; background:#fff; transition:transform .12s, box-shadow .12s;
+         animation:pop .22s ease; }
+  @keyframes pop{ from{ opacity:0; transform:translateY(4px);} to{ opacity:1; transform:none;} }
+  .tile:hover{ transform:translateY(-2px); box-shadow:0 3px 10px rgba(0,0,0,.08); }
+  .tile .tl{ display:block; font-size:.62rem; letter-spacing:.06em; text-transform:uppercase; opacity:.8; }
+  .tile .tx{ display:block; font-size:1.25rem; font-weight:bold; line-height:1.2; }
+  .tile .tm{ display:block; font-size:.72rem; color:#555; margin-top:.05rem; }
+  /* root = source: filled, dominant (redundant cue = solid fill + center) */
+  .tile.root{ background:var(--phys-source); border:2px solid var(--phys-source); }
+  .tile.root .tl{ color:#ffe9da; } .tile.root .tx{ color:#fff; } .tile.root .tm{ color:#ffe2d2; }
+  /* prefix = relation: outlined green, leads */
+  .tile.prefix{ border:2px solid var(--phys-relation); } .tile.prefix .tl,.tile.prefix .tx{ color:var(--phys-relation); }
+  /* suffix = const: outlined gray, trails */
+  .tile.suffix{ border:2px solid var(--phys-const); }   .tile.suffix .tl,.tile.suffix .tx{ color:var(--phys-const); }
+  .tile.sel{ box-shadow:0 0 0 3px rgba(0,114,178,.35); }
+  .plus{ align-self:center; color:#999; font-size:1.1rem; }
+
+  .gloss{ text-align:center; font-size:.95rem; color:#444; margin:.1rem 0 .2rem; }
+  .gloss .arr{ color:#999; margin:0 .35em; }
+  .builtword{ text-align:center; font-size:1.5rem; font-weight:bold; margin:.15rem 0 .1rem; }
+
+  .revealBtn{ display:block; margin:.55rem auto .2rem; font:inherit; font-size:.88rem;
+              border:1px solid var(--phys-field); color:var(--phys-field); background:#fff;
+              border-radius:7px; padding:.3em 1em; cursor:pointer; }
+  .meaningBlock{ border:1px solid var(--line); border-left:4px solid var(--phys-field);
+                 border-radius:6px; background:var(--panel); padding:.55rem .75rem; margin-top:.5rem; font-size:.93rem;}
+  .meaningBlock .def b{ color:var(--phys-field); }
+  .meaningBlock .pos{ font-size:.82rem; color:#666; margin:.15rem 0; }
+  .meaningBlock .ex{ font-style:italic; color:#333; }
+  .meaningBlock .ex b{ color:var(--phys-field); font-style:normal; }
+
+  .conno{ margin-top:.6rem; }
+  .conno .cl{ font-size:.78rem; color:#666; text-transform:uppercase; letter-spacing:.04em; }
+  .conno-track{ position:relative; height:10px; border-radius:99px; margin:.25rem 0 .1rem;
+                background:linear-gradient(90deg,#e7c3b3,#eee,#bcd6ea); border:1px solid #ddd; }
+  .conno-track > i{ position:absolute; top:50%; width:14px; height:14px; border-radius:50%;
+                    background:var(--phys-const); border:2px solid #fff; box-shadow:0 1px 3px rgba(0,0,0,.3);
+                    transform:translate(-50%,-50%); left:50%; transition:left .3s; }
+  .conno-ends{ display:flex; justify-content:space-between; font-size:.76rem; color:#777; }
+  .conno-note{ font-size:.82rem; color:#555; margin-top:.15rem; }
+
+  .related{ font-size:.84rem; color:#444; margin-top:.55rem; min-height:1.2rem; }
+  .related b{ color:var(--phys-source); }
+  .related .w{ display:inline-block; background:#fff; border:1px solid var(--line); border-radius:12px;
+               padding:.02em .55em; margin:.1em .12em; font-size:.82rem; }
+
+  /* ---- station card ---- */
+  .station{ border:1px solid var(--line); border-radius:10px; padding:1.1rem 1.2rem; background:#fff;}
+  .station .badge{ display:inline-block; font-size:.72rem; letter-spacing:.05em; text-transform:uppercase;
+                   color:#fff; padding:.12em .7em; border-radius:11px; }
+  .station h2{ font-size:1.2rem; margin:.45rem 0 .2rem; }
+  .station .lead{ color:#555; font-size:.95rem; margin:.1rem 0 .8rem;}
+  .phase{ margin:1rem 0 .3rem; font-weight:bold; font-size:.82rem; letter-spacing:.04em;
+          text-transform:uppercase; color:#888;}
+  .phase b{ color:var(--phys-source); }
+
+  label.option{ display:block; border:1px solid var(--line); border-radius:7px; padding:.5rem .7rem;
+                margin:.4rem 0; cursor:pointer; font-size:.95rem; transition:background .12s,border-color .12s;}
+  label.option:hover{ background:#f6f6f4; }
+  label.option input{ margin-right:.5rem; }
+  label.option.opt-correct{ background:#e9f7f0; border-color:var(--phys-relation);}
+  label.option.opt-correct::after{ content:" ✓"; color:var(--phys-relation); font-weight:bold;}
+  label.option.opt-wrong{ background:#fdeee7; border-color:var(--phys-source);}
+
+  textarea{ width:100%; font:inherit; font-size:.95rem; padding:.55rem .7rem; border:1px solid var(--line);
+            border-radius:7px; resize:vertical; min-height:4.6rem; }
+  .grabrow{ display:flex; align-items:center; gap:.55rem; flex-wrap:wrap; margin:.45rem 0; }
+  .grabrow input{ font:inherit; border:1px solid var(--line); border-radius:6px; padding:.3em .5em; min-width:11rem; flex:1; }
+  .grab{ font:inherit; font-size:.82rem; padding:.25em .6em; border:1px solid var(--phys-field);
+         color:var(--phys-field); background:#fff; border-radius:6px; cursor:pointer;}
+  .qlabel{ font-weight:bold; font-size:.97rem; margin:.2rem 0 .1rem; }
+  .hint{ font-size:.85rem; color:#777; margin:.1rem 0 .3rem;}
+
+  .reveal{ display:none; margin-top:1rem; background:var(--soft); border:1px solid #e6e2d8;
+           border-left:4px solid var(--phys-relation); border-radius:6px; padding:.7rem .9rem; font-size:.93rem;}
+  .reveal h4{ margin:.1rem 0 .35rem; color:var(--phys-relation); font-size:.95rem;}
+  .reveal.show{ display:block; }
+  .sample{ background:#fff; border:1px dashed var(--line); border-radius:6px; padding:.5rem .7rem; margin-top:.4rem;
+           font-style:italic; color:#444;}
+
+  .navrow{ display:flex; justify-content:space-between; align-items:center; gap:.8rem; margin-top:1.2rem;
+           border-top:1px solid #eee; padding-top:.9rem; flex-wrap:wrap;}
+  .navrow .dots{ display:flex; gap:.35rem; flex-wrap:wrap;}
+  .navrow .dot{ width:.7rem; height:.7rem; border-radius:50%; background:#ddd; border:none; cursor:pointer; padding:0;}
+  .navrow .dot.done{ background:var(--phys-relation);}
+  .navrow .dot.cur{ background:var(--phys-const); transform:scale(1.25);}
+  .btn{ font:inherit; font-size:.95rem; padding:.4em 1.1em; border-radius:7px; border:1px solid var(--line);
+        background:#fff; cursor:pointer;}
+  .btn.primary{ background:var(--phys-field); color:#fff; border-color:var(--phys-field); }
+  .btn.check{ background:var(--phys-source); color:#fff; border-color:var(--phys-source); margin-top:1rem;}
+  .btn:disabled{ opacity:.4; cursor:not-allowed; }
+
+  /* ---- report ---- */
+  #reportView{ display:none; max-width:54rem; margin:1.5rem auto; padding:0 1rem;}
+  #reportView.show{ display:block; }
+  #reportView h2{ font-size:1.4rem; }
+  .rep-q{ margin:.9rem 0; }
+  .rep-q .rl{ font-weight:bold; font-size:.95rem;}
+  .rep-q .ra{ background:var(--soft); border:1px solid #eee; border-radius:6px; padding:.4rem .7rem;
+              margin-top:.2rem; white-space:pre-wrap; min-height:1.6rem;}
+  .rep-q .ra:empty::before{ content:"(left blank)"; color:#aaa; font-style:italic;}
+  footer{ max-width:74rem; margin:1.5rem auto; padding:0 1rem 2rem; color:#888; font-size:.85rem;}
+  code{ background:#f3f3f3; padding:0 .25em; border-radius:3px;}
+
+  @media print{
+    header.top, .namebar, .wrap, footer, .feyn { display:none !important; }
+    #reportView{ display:block !important; }
+    .rep-q .ra{ background:#fff; }
+  }
+</style>
+</head>
+<body>
+
+<header class="top">
+  <h1>Morpheme Machine — A Word Lab</h1>
+  <p class="sub">Real words, taken apart. You'll <b>predict</b> a word's meaning, then <b>split it</b> into Greek &amp; Latin parts and <b>explain</b> how the parts build the meaning.</p>
+  <div class="feyn">
+    <b>How this lab works:</b> for each word you'll guess the meaning <i>before</i> you reveal it, then break the
+    word into its parts and check. Every word in this machine is a <i>real</i> English word — the parts are its
+    true Greek and Latin roots and affixes.
+    <div class="loop"><span>① Predict</span><span>② Split &amp; investigate</span><span>③ Explain the parts</span><span>④ Use it &amp; refine</span></div>
+  </div>
+</header>
+
+<div class="namebar">
+  <label>Name: <input type="text" id="studentName" placeholder="your name" autocomplete="off"></label>
+  <div class="progress" title="lab progress"><i id="progFill"></i></div>
+  <button class="linkbtn" id="viewReport">View my lab report ▸</button>
+  <button class="linkbtn" id="resetLab">reset</button>
+</div>
+
+<!-- ======================= WORKBENCH ======================= -->
+<div class="wrap" id="labView">
+
+  <!-- ---- left: the live decomposer ---- -->
+  <div class="machine">
+    <div class="simhint" id="simHint">Pick a word. The machine splits it into its real parts.</div>
+    <div class="legend">
+      <b>The parts have jobs (and colours):</b><br>
+      <span class="sw" style="background:var(--phys-source)"></span><span class="m-root">root</span> = the core meaning ·
+      <span class="sw" style="background:var(--phys-relation)"></span><span class="m-prefix">prefix</span> = steers it (direction, negation, number) ·
+      <span class="sw" style="background:var(--phys-const)"></span><span class="m-suffix">suffix</span> = sets the grammar job ·
+      <span class="sw" style="background:var(--phys-field)"></span><span class="m-mean">meaning</span> in context
+    </div>
+    <div class="panel">
+      <div class="wordpick">
+        <label for="wordSel">Word</label>
+        <select id="wordSel"></select>
+      </div>
+      <div class="tiles" id="tiles"></div>
+      <div class="gloss" id="gloss"></div>
+      <div class="builtword" id="builtWord"></div>
+      <button class="revealBtn" id="revealBtn">Reveal the meaning ▸</button>
+      <div class="meaningBlock" id="meaningBlock" hidden>
+        <div class="def" id="defLine"></div>
+        <div class="pos" id="posLine"></div>
+        <div class="ex" id="exLine"></div>
+      </div>
+      <div class="conno" id="connoBlock" hidden>
+        <div class="cl">connotation — the <i>feeling</i> of the word</div>
+        <div class="conno-track"><i id="connoMark"></i></div>
+        <div class="conno-ends"><span>negative</span><span>neutral</span><span>positive</span></div>
+        <div class="conno-note" id="connoNote"></div>
+      </div>
+      <div class="related" id="related">Tip: click any part above to see other words that share it.</div>
+    </div>
+  </div>
+
+  <!-- ---- right: the current station ---- -->
+  <div class="station" id="station"><!-- filled by JS --></div>
+</div>
+
+<!-- ======================= REPORT ======================= -->
+<div id="reportView">
+  <h2>My Word Lab Report — Roots &amp; Affixes</h2>
+  <p id="repHead" style="color:#555"></p>
+  <div id="repBody"></div>
+  <div style="margin-top:1.4rem; display:flex; gap:.8rem; flex-wrap:wrap;">
+    <button class="btn primary" id="printReport">🖨 Print / Save as PDF</button>
+    <button class="btn" id="backToLab">← Back to the lab</button>
+  </div>
+</div>
+
+<footer>
+  Grade 7 · 2024 Virginia English SOL 7.RV.1 (roots/affixes, context, word relationships, connotation, references,
+  using new words). Built on the predict → investigate → explain → refine loop. Colours follow the house CVD-safe
+  palette in <code>Formatting/ColorCoding/physcolor.css</code>. Your answers stay in this browser only.
+</footer>
+
+<script>
+"use strict";
+/* =======================================================================
+   PART A — the decomposer engine.  Every entry is a REAL word; its
+   `parts` concatenate exactly to `word`, so the coloured tiles always
+   match the spelling.  type: prefix=relation, root=source, suffix=const.
+   ======================================================================= */
+const FAMILIES = [
+  { id:'spect', label:'spect / spec — “look, watch”' },
+  { id:'dict',  label:'dict — “say, speak”' },
+  { id:'port',  label:'port — “carry”' },
+  { id:'scrib', label:'scrib / script — “write”' },
+  { id:'ject',  label:'ject — “throw”' },
+  { id:'struct',label:'struct — “build”' },
+  { id:'cred',  label:'cred — “believe”' },
+];
+
+const WORDS = [
+  /* ---- spect : look / watch ---- */
+  { id:'inspect', word:'inspect', root:'spect', pos:'verb',
+    parts:[{t:'prefix',x:'in',m:'into'},{t:'root',x:'spect',m:'look'}],
+    def:'to look into something closely; to examine.',
+    ex:'The mechanic will <b>inspect</b> the brakes before the trip.' },
+  { id:'spectator', word:'spectator', root:'spect', pos:'noun',
+    parts:[{t:'root',x:'spect',m:'look'},{t:'suffix',x:'ator',m:'one who'}],
+    def:'one who watches; a viewer.',
+    ex:'Every <b>spectator</b> in the stadium rose to cheer.' },
+  { id:'prospect', word:'prospect', root:'spect', pos:'noun',
+    parts:[{t:'prefix',x:'pro',m:'forward'},{t:'root',x:'spect',m:'look'}],
+    def:'a looking-forward; an expectation or possibility.',
+    ex:'The <b>prospect</b> of summer break excited the class.' },
+  { id:'retrospect', word:'retrospect', root:'spect', pos:'noun',
+    parts:[{t:'prefix',x:'retro',m:'back'},{t:'root',x:'spect',m:'look'}],
+    def:'a looking-back at past events.',
+    ex:'In <b>retrospect</b>, leaving early was the right call.' },
+  { id:'circumspect', word:'circumspect', root:'spect', pos:'adjective', conn:0.6,
+    parts:[{t:'prefix',x:'circum',m:'around'},{t:'root',x:'spect',m:'look'}],
+    def:'careful and cautious — literally “looking around” before acting.',
+    ex:'She stayed <b>circumspect</b>, checking each fact before sharing it.' },
+
+  /* ---- dict : say / speak ---- */
+  { id:'predict', word:'predict', root:'dict', pos:'verb',
+    parts:[{t:'prefix',x:'pre',m:'before'},{t:'root',x:'dict',m:'say'}],
+    def:'to say beforehand what will happen.',
+    ex:'Scientists <b>predict</b> tomorrow’s weather from today’s data.' },
+  { id:'contradict', word:'contradict', root:'dict', pos:'verb',
+    parts:[{t:'prefix',x:'contra',m:'against'},{t:'root',x:'dict',m:'say'}],
+    def:'to say the opposite; to speak against.',
+    ex:'The new evidence seemed to <b>contradict</b> the witness.' },
+  { id:'dictate', word:'dictate', root:'dict', pos:'verb',
+    parts:[{t:'root',x:'dict',m:'say'},{t:'suffix',x:'ate',m:'to make/do'}],
+    def:'to say aloud for someone to write, or to give orders.',
+    ex:'The coach will <b>dictate</b> the plays from the sideline.' },
+  { id:'benediction', word:'benediction', root:'dict', pos:'noun', conn:2,
+    parts:[{t:'prefix',x:'bene',m:'good/well'},{t:'root',x:'dict',m:'say'},{t:'suffix',x:'ion',m:'act of'}],
+    def:'a blessing — literally a “good saying.”',
+    ex:'The ceremony closed with a gentle <b>benediction</b>.' },
+  { id:'malediction', word:'malediction', root:'dict', pos:'noun', conn:-2,
+    parts:[{t:'prefix',x:'male',m:'bad/badly'},{t:'root',x:'dict',m:'say'},{t:'suffix',x:'ion',m:'act of'}],
+    def:'a curse — literally a “bad saying.”',
+    ex:'In the story, the witch hissed a <b>malediction</b> at the knight.' },
+
+  /* ---- port : carry ---- */
+  { id:'transport', word:'transport', root:'port', pos:'verb',
+    parts:[{t:'prefix',x:'trans',m:'across'},{t:'root',x:'port',m:'carry'}],
+    def:'to carry something across a distance.',
+    ex:'Trucks <b>transport</b> the harvest across the state.' },
+  { id:'export', word:'export', root:'port', pos:'verb',
+    parts:[{t:'prefix',x:'ex',m:'out'},{t:'root',x:'port',m:'carry'}],
+    def:'to carry goods out of a country to sell.',
+    ex:'Brazil <b>exports</b> coffee to dozens of countries.' },
+  { id:'import', word:'import', root:'port', pos:'verb',
+    parts:[{t:'prefix',x:'im',m:'in (in-)'},{t:'root',x:'port',m:'carry'}],
+    def:'to carry goods into a country from abroad.',
+    ex:'The shop <b>imports</b> fabric from overseas.' },
+  { id:'portable', word:'portable', root:'port', pos:'adjective',
+    parts:[{t:'root',x:'port',m:'carry'},{t:'suffix',x:'able',m:'able to be'}],
+    def:'able to be carried; easy to move.',
+    ex:'A <b>portable</b> speaker is small enough to carry anywhere.' },
+  { id:'support', word:'support', root:'port', pos:'verb', conn:1,
+    parts:[{t:'prefix',x:'sup',m:'under (sub-)'},{t:'root',x:'port',m:'carry'}],
+    def:'to hold up — literally to “carry from underneath.”',
+    ex:'Steel beams <b>support</b> the weight of the bridge.' },
+
+  /* ---- scrib / script : write ---- */
+  { id:'describe', word:'describe', root:'scrib', pos:'verb',
+    parts:[{t:'prefix',x:'de',m:'down'},{t:'root',x:'scribe',m:'write'}],
+    def:'to write or tell about something in detail.',
+    ex:'Try to <b>describe</b> the painting in three sentences.' },
+  { id:'subscribe', word:'subscribe', root:'scrib', pos:'verb',
+    parts:[{t:'prefix',x:'sub',m:'under'},{t:'root',x:'scribe',m:'write'}],
+    def:'to sign up — literally to “write your name under.”',
+    ex:'You can <b>subscribe</b> to the library’s newsletter.' },
+  { id:'manuscript', word:'manuscript', root:'scrib', pos:'noun',
+    parts:[{t:'prefix',x:'manu',m:'hand'},{t:'root',x:'script',m:'written'}],
+    def:'a document written (originally by hand) before it is printed.',
+    ex:'The author mailed her <b>manuscript</b> to the publisher.' },
+  { id:'inscription', word:'inscription', root:'scrib', pos:'noun',
+    parts:[{t:'prefix',x:'in',m:'on'},{t:'root',x:'script',m:'write'},{t:'suffix',x:'ion',m:'act of'}],
+    def:'words written or carved on a surface.',
+    ex:'An <b>inscription</b> on the ring spelled out a date.' },
+  { id:'prescription', word:'prescription', root:'scrib', pos:'noun',
+    parts:[{t:'prefix',x:'pre',m:'before'},{t:'root',x:'script',m:'write'},{t:'suffix',x:'ion',m:'act of'}],
+    def:'a doctor’s written order — literally “written before.”',
+    ex:'The doctor wrote a <b>prescription</b> for the medicine.' },
+
+  /* ---- ject : throw ---- */
+  { id:'eject', word:'eject', root:'ject', pos:'verb',
+    parts:[{t:'prefix',x:'e',m:'out (ex-)'},{t:'root',x:'ject',m:'throw'}],
+    def:'to throw or force something out.',
+    ex:'Press this button to <b>eject</b> the disc.' },
+  { id:'inject', word:'inject', root:'ject', pos:'verb',
+    parts:[{t:'prefix',x:'in',m:'into'},{t:'root',x:'ject',m:'throw'}],
+    def:'to force a liquid into something.',
+    ex:'The nurse will <b>inject</b> the vaccine into your arm.' },
+  { id:'reject', word:'reject', root:'ject', pos:'verb', conn:-0.6,
+    parts:[{t:'prefix',x:'re',m:'back'},{t:'root',x:'ject',m:'throw'}],
+    def:'to throw back; to refuse.',
+    ex:'The factory will <b>reject</b> any part with a crack.' },
+  { id:'project', word:'project', root:'ject', pos:'verb',
+    parts:[{t:'prefix',x:'pro',m:'forward'},{t:'root',x:'ject',m:'throw'}],
+    def:'to throw or cast forward (an image, a voice, a plan).',
+    ex:'They <b>project</b> the movie onto the gym wall.' },
+  { id:'interjection', word:'interjection', root:'ject', pos:'noun',
+    parts:[{t:'prefix',x:'inter',m:'between'},{t:'root',x:'ject',m:'throw'},{t:'suffix',x:'ion',m:'act of'}],
+    def:'a word “thrown between” others to show feeling, like “Wow!”',
+    ex:'In “Ouch! that hurt,” the word “ouch” is an <b>interjection</b>.' },
+
+  /* ---- struct : build ---- */
+  { id:'construct', word:'construct', root:'struct', pos:'verb',
+    parts:[{t:'prefix',x:'con',m:'together'},{t:'root',x:'struct',m:'build'}],
+    def:'to build something by putting parts together.',
+    ex:'Workers will <b>construct</b> the new wing next year.' },
+  { id:'destruction', word:'destruction', root:'struct', pos:'noun', conn:-1.5,
+    parts:[{t:'prefix',x:'de',m:'down/undo'},{t:'root',x:'struct',m:'build'},{t:'suffix',x:'ion',m:'act of'}],
+    def:'the act of tearing down; ruin.',
+    ex:'The flood left a path of <b>destruction</b>.' },
+  { id:'instructor', word:'instructor', root:'struct', pos:'noun',
+    parts:[{t:'prefix',x:'in',m:'in/upon'},{t:'root',x:'struct',m:'build'},{t:'suffix',x:'or',m:'one who'}],
+    def:'a teacher — one who “builds knowledge into” you.',
+    ex:'Our swim <b>instructor</b> taught us to float first.' },
+  { id:'structure', word:'structure', root:'struct', pos:'noun',
+    parts:[{t:'root',x:'struct',m:'build'},{t:'suffix',x:'ure',m:'result of'}],
+    def:'something that has been built; the way parts are arranged.',
+    ex:'A honeycomb is a strong, lightweight <b>structure</b>.' },
+
+  /* ---- cred : believe ---- */
+  { id:'credible', word:'credible', root:'cred', pos:'adjective', conn:0.8,
+    parts:[{t:'root',x:'cred',m:'believe'},{t:'suffix',x:'ible',m:'able to be'}],
+    def:'believable; able to be trusted.',
+    ex:'A <b>credible</b> source backs its claims with evidence.' },
+  { id:'incredible', word:'incredible', root:'cred', pos:'adjective', conn:1.5,
+    parts:[{t:'prefix',x:'in',m:'not'},{t:'root',x:'cred',m:'believe'},{t:'suffix',x:'ible',m:'able to be'}],
+    def:'hard to believe; amazing.',
+    ex:'The gymnast showed <b>incredible</b> balance.' },
+];
+
+const ROLE = { prefix:{cls:'prefix',label:'prefix'}, root:{cls:'root',label:'root'}, suffix:{cls:'suffix',label:'suffix'} };
+const byId = (id)=>WORDS.find(w=>w.id===id);
+
+/* ---- build the grouped word selector ---- */
+const wordSel=document.getElementById('wordSel');
+FAMILIES.forEach(f=>{
+  const og=document.createElement('optgroup'); og.label=f.label;
+  WORDS.filter(w=>w.root===f.id).forEach(w=>{
+    const o=document.createElement('option'); o.value=w.id; o.textContent=w.word; og.appendChild(o); });
+  wordSel.appendChild(og);
+});
+
+/* ---- machine elements ---- */
+const tilesEl=document.getElementById('tiles'), glossEl=document.getElementById('gloss'),
+      builtWord=document.getElementById('builtWord'), revealBtn=document.getElementById('revealBtn'),
+      meaningBlock=document.getElementById('meaningBlock'), defLine=document.getElementById('defLine'),
+      posLine=document.getElementById('posLine'), exLine=document.getElementById('exLine'),
+      connoBlock=document.getElementById('connoBlock'), connoMark=document.getElementById('connoMark'),
+      connoNote=document.getElementById('connoNote'), relatedEl=document.getElementById('related'),
+      simHint=document.getElementById('simHint');
+
+function renderMachine(){
+  const w=byId(wordSel.value);
+  /* tiles, with " + " between them; they concatenate to the real word */
+  tilesEl.innerHTML='';
+  w.parts.forEach((p,i)=>{
+    if(i){ const plus=document.createElement('span'); plus.className='plus'; plus.textContent='+'; tilesEl.appendChild(plus); }
+    const r=ROLE[p.t];
+    const tile=document.createElement('button');
+    tile.className='tile '+r.cls; tile.dataset.part=p.x.toLowerCase();
+    tile.innerHTML=`<span class="tl">${r.label}</span><span class="tx">${p.x}</span><span class="tm">${p.m}</span>`;
+    tilesEl.appendChild(tile);
+  });
+  glossEl.innerHTML = w.parts.map(p=>p.m).join(' <span class="arr">+</span> ');
+  builtWord.innerHTML = w.parts.map(p=>`<span class="m-${ROLE[p.t].cls}">${p.x}</span>`).join('');
+  /* hide the answer until the student commits a prediction */
+  meaningBlock.hidden=true; connoBlock.hidden=true;
+  revealBtn.textContent='Reveal the meaning ▸'; revealBtn.style.display='';
+  defLine.innerHTML=`<b>Meaning:</b> ${w.def}`;
+  posLine.textContent='part of speech: '+w.pos;
+  exLine.innerHTML=w.ex;
+  relatedEl.innerHTML='Tip: click any part above to see other words that share it.';
+}
+function revealMeaning(){
+  const w=byId(wordSel.value);
+  meaningBlock.hidden=false; revealBtn.style.display='none';
+  /* connotation needle: only words with a real `conn` move off-centre */
+  connoBlock.hidden=false;
+  const c = (typeof w.conn==='number') ? w.conn : 0;
+  connoMark.style.left = ((c+2)/4*100).toFixed(1)+'%';
+  connoNote.textContent = (typeof w.conn==='number')
+    ? (c>0?'This word carries a positive feeling.':'This word carries a negative feeling.')
+    : 'This word is fairly neutral — it mostly reports a fact.';
+}
+revealBtn.onclick=revealMeaning;
+wordSel.onchange=renderMachine;
+
+/* click a tile -> show other words sharing that morpheme (word relationships) */
+tilesEl.addEventListener('click', e=>{
+  const tile=e.target.closest('.tile'); if(!tile) return;
+  tilesEl.querySelectorAll('.tile').forEach(t=>t.classList.remove('sel'));
+  tile.classList.add('sel');
+  const part=tile.dataset.part;
+  const others=WORDS.filter(w=>w.id!==wordSel.value && w.parts.some(p=>p.x.toLowerCase()===part));
+  if(others.length){
+    relatedEl.innerHTML=`Words that also use <b>${part}</b>: `+
+      others.map(w=>`<span class="w">${w.word}</span>`).join('');
+  } else {
+    relatedEl.innerHTML=`No other word in this machine uses <b>${part}</b> — but it appears in many real words.`;
+  }
+});
+
+function setMachine(scenario){
+  if(scenario && scenario.word){ wordSel.value=scenario.word; }
+  renderMachine();
+  if(scenario && scenario.reveal) revealMeaning();
+}
+const currentMachineWord=()=>byId(wordSel.value).word;
+
+/* =======================================================================
+   PART B — the lab (stations, persistence, feedback, report)
+   ======================================================================= */
+const STEPS = [
+  { id:'orient', title:'Read the machine', badge:'Start', color:'var(--phys-const)',
+    scenario:{ word:'predict' },
+    hint:'Start with <b>predict</b> = <span class="m-prefix">pre</span> + <span class="m-root">dict</span>. Read each part before the whole word.',
+    html:`
+      <span class="badge" style="background:var(--phys-const)">Start</span>
+      <h2>Read the parts first</h2>
+      <p class="lead">A <i>morpheme</i> is a word part that carries meaning. Words built from Greek and Latin parts can be read like a tiny equation — and they're colour-coded by the part's <i>job</i>.</p>
+      <div class="phase">① Get oriented</div>
+      <div class="qlabel">In <b>predict</b>, the <span class="m-root">root</span> <b>dict</b> means…</div>
+      <label class="option"><input type="radio" name="o1" value="say or speak" data-q="orient_root" data-label="In predict, the root dict means…" data-correct="true">say or speak</label>
+      <label class="option"><input type="radio" name="o1" value="carry" data-q="orient_root" data-label="In predict, the root dict means…">carry</label>
+      <label class="option"><input type="radio" name="o1" value="look" data-q="orient_root" data-label="In predict, the root dict means…">look or watch</label>
+      <div class="qlabel" style="margin-top:.8rem">The <span class="m-prefix">prefix</span> <b>pre-</b> means…</div>
+      <label class="option"><input type="radio" name="o2" value="before" data-q="orient_prefix" data-label="The prefix pre- means…" data-correct="true">before</label>
+      <label class="option"><input type="radio" name="o2" value="after" data-q="orient_prefix" data-label="The prefix pre- means…">after</label>
+      <label class="option"><input type="radio" name="o2" value="again" data-q="orient_prefix" data-label="The prefix pre- means…">again</label>`,
+    checkLabel:'Check my answers',
+    reveal:`<h4>Every part has a job</h4>
+      The <span class="m-root">root</span> carries the core meaning (here, <b>dict</b> = say). A
+      <span class="m-prefix">prefix</span> steers it — direction, time, number, or yes/no (here <b>pre-</b> = before).
+      A <span class="m-suffix">suffix</span> sets the grammar job. So <b>predict</b> literally means
+      <i>“to say before.”</i> Read root-first and the rest falls into place.` },
+
+  { id:'root', title:'The root is the engine', badge:'Build', color:'var(--phys-source)',
+    scenario:{ word:'transport' },
+    hint:'Open the family menu and try <b>export, import, portable, support</b>. The root <span class="m-root">port</span> stays put while everything else changes.',
+    html:`
+      <span class="badge" style="background:var(--phys-source)">Predict → Investigate → Explain</span>
+      <h2>The root carries the meaning</h2>
+      <p class="lead">Virginia 7.RV.1.C asks you to use roots and affixes to predict unfamiliar words. Start with the root.</p>
+      <div class="phase"><b>①</b> Predict</div>
+      <div class="qlabel">If <span class="m-root">port</span> means “carry,” then <b>transport</b> most nearly means…</div>
+      <label class="option"><input type="radio" name="r1" value="carry across" data-q="root_predict" data-label="Transport most nearly means…" data-correct="true">carry something across a distance</label>
+      <label class="option"><input type="radio" name="r1" value="watch closely" data-q="root_predict" data-label="Transport most nearly means…">watch something closely</label>
+      <label class="option"><input type="radio" name="r1" value="say beforehand" data-q="root_predict" data-label="Transport most nearly means…">say something beforehand</label>
+      <div class="phase"><b>②</b> Investigate</div>
+      <div class="qlabel">In the machine, switch to another <span class="m-root">port</span> word. Record it, and what you think it means from the parts.</div>
+      <div class="grabrow"><input data-q="root_word" data-label="A port-family word I explored" placeholder="word"><button class="grab" data-grab="word">⤵ use machine word</button></div>
+      <textarea data-q="root_meaning" data-label="What the parts tell me it means" placeholder="From the parts, I think it means…"></textarea>
+      <div class="phase"><b>③</b> Explain</div>
+      <div class="qlabel">All these words share <span class="m-root">port</span>. What stays the same across the whole family, and what changes?</div>
+      <textarea data-q="root_explain" data-label="Explain: what stays the same vs. changes in a root family" placeholder="The part that stays the same is… What changes is…"></textarea>`,
+    checkLabel:'Reveal the strategy',
+    onCheck(root){
+      const v=(root.querySelector('[data-q=root_word]').value||'').trim().toLowerCase();
+      if(!v) return '';
+      const w=WORDS.find(x=>x.word===v);
+      if(w&&w.root==='port') return `<p style="margin:.4rem 0 0;color:var(--phys-relation)"><b>“${w.word}”</b> is in the <span class="m-root">port</span> family — “${w.def}” Same root, new prefix. Nicely done.</p>`;
+      if(w) return `<p style="margin:.4rem 0 0;color:var(--phys-source)"><b>“${w.word}”</b> is a real word, but its root is <span class="m-root">${w.root}</span>, not <b>port</b>. Try one from the <i>port — “carry”</i> group.</p>`;
+      return `<p style="margin:.4rem 0 0;color:var(--phys-source)">I don't find “${v}” in the machine — re-check the spelling or pick from the <i>port</i> group.</p>`;
+    },
+    reveal:`<h4>Root-first reading works</h4>
+      The <span class="m-root">root</span> is the engine — “carry” runs through <i>every</i> port word.
+      The <span class="m-prefix">prefix</span> just points it somewhere: <b>trans</b>port (across), <b>ex</b>port (out),
+      <b>im</b>port (in), <b>sup</b>port (from under). For any unfamiliar word, name the root first, then let the
+      affixes adjust it.` },
+
+  { id:'prefix', title:'Prefixes steer', badge:'Predict', color:'var(--phys-relation)',
+    scenario:{ word:'export' },
+    hint:'Compare <b>export, import, transport</b> — same <span class="m-root">root</span>, different <span class="m-prefix">prefix</span>. Watch the meaning turn.',
+    html:`
+      <span class="badge" style="background:var(--phys-relation)">Predict → Investigate → Explain</span>
+      <h2>The prefix steers the meaning</h2>
+      <p class="lead">Same root, different direction. The prefix is the steering wheel.</p>
+      <div class="phase"><b>①</b> Predict</div>
+      <div class="qlabel"><b>Export</b> = <span class="m-prefix">ex-</span> (out) + <span class="m-root">port</span> (carry). So to export is to carry…</div>
+      <label class="option"><input type="radio" name="p1" value="out" data-q="pre_predict" data-label="To export is to carry…" data-correct="true">out (e.g. goods out of a country)</label>
+      <label class="option"><input type="radio" name="p1" value="in" data-q="pre_predict" data-label="To export is to carry…">in, from somewhere else</label>
+      <label class="option"><input type="radio" name="p1" value="under" data-q="pre_predict" data-label="To export is to carry…">underneath something</label>
+      <div class="phase"><b>②</b> Investigate</div>
+      <div class="qlabel"><b>Import</b> and <b>export</b> share the root <span class="m-root">port</span>. They mean opposite things because…</div>
+      <label class="option"><input type="radio" name="p2" value="prefix" data-q="pre_obs" data-label="Import vs. export differ because…" data-correct="true">only the prefix changed (in- vs. ex-)</label>
+      <label class="option"><input type="radio" name="p2" value="root" data-q="pre_obs" data-label="Import vs. export differ because…">the root changed</label>
+      <label class="option"><input type="radio" name="p2" value="suffix" data-q="pre_obs" data-label="Import vs. export differ because…">the suffix changed</label>
+      <div class="phase"><b>③</b> Explain</div>
+      <div class="qlabel">How do <span class="m-prefix">ex-</span>, <span class="m-prefix">im-</span>, and <span class="m-prefix">trans-</span> each steer the idea of “carry”?</div>
+      <textarea data-q="pre_explain" data-label="Explain: how ex-/im-/trans- steer the root carry" placeholder="ex- sends it… im- sends it… trans- sends it…"></textarea>`,
+    checkLabel:'Check my prediction',
+    reveal:`<h4>One root, many directions</h4>
+      The <span class="m-root">root</span> stays “carry”; the <span class="m-prefix">prefix</span> decides which way.
+      <b>ex-</b> = out, <b>im-/in-</b> = in, <b>trans-</b> = across, <b>sup-/sub-</b> = under. Change the prefix and
+      you flip or turn the meaning without touching the engine.` },
+
+  { id:'suffix', title:'Suffixes set the job', badge:'Investigate', color:'var(--phys-const)',
+    scenario:{ word:'describe' },
+    hint:'Compare <b>describe</b> with <b>inscription</b> and <b>prescription</b>. The root <span class="m-root">scrib/script</span> = “write” never changes; the <span class="m-suffix">suffix</span> changes the word\'s job.',
+    html:`
+      <span class="badge" style="background:var(--phys-const)">Predict → Investigate → Explain</span>
+      <h2>The suffix sets the grammar job</h2>
+      <p class="lead">A suffix usually doesn't change <i>what</i> a word is about — it changes <i>what kind of word</i> it is.</p>
+      <div class="phase"><b>①</b> Predict</div>
+      <div class="qlabel">When you add the <span class="m-suffix">suffix</span> <b>-ion</b> to an action, you usually get…</div>
+      <label class="option"><input type="radio" name="s1" value="noun" data-q="suf_predict" data-label="Adding -ion usually makes…" data-correct="true">a <b>noun</b> — the act or result of that action</label>
+      <label class="option"><input type="radio" name="s1" value="opposite" data-q="suf_predict" data-label="Adding -ion usually makes…">the opposite meaning</label>
+      <label class="option"><input type="radio" name="s1" value="past" data-q="suf_predict" data-label="Adding -ion usually makes…">the past tense</label>
+      <div class="phase"><b>②</b> Investigate</div>
+      <div class="qlabel">You <b>describe</b> something (an action). An <b>inscription</b> is a <i>thing</i>. Which one is the noun?</div>
+      <label class="option"><input type="radio" name="s2" value="inscription" data-q="suf_obs" data-label="Which is the noun?" data-correct="true">inscription (root + <b>-ion</b>)</label>
+      <label class="option"><input type="radio" name="s2" value="describe" data-q="suf_obs" data-label="Which is the noun?">describe</label>
+      <div class="phase"><b>③</b> Explain</div>
+      <div class="qlabel">The root <span class="m-root">scrib/script</span> = “write” is in both words. So what is the <span class="m-suffix">suffix</span> actually changing?</div>
+      <textarea data-q="suf_explain" data-label="Explain: what the suffix changes (vs. the root)" placeholder="The root keeps the meaning ‘write’, but the suffix changes…"></textarea>`,
+    checkLabel:'Reveal the suffix rule',
+    reveal:`<h4>Suffix = the grammar operator</h4>
+      The <span class="m-root">root</span> says <i>what</i> (write); the <span class="m-suffix">suffix</span> says
+      <i>what kind of word</i>: <b>-ion</b> makes a noun (inscript<b>ion</b>, prescript<b>ion</b>), <b>-able/-ible</b>
+      makes an adjective (port<b>able</b>, cred<b>ible</b>), <b>-or/-ator</b> names a person (instruct<b>or</b>,
+      spect<b>ator</b>). Same idea, different job in the sentence.` },
+
+  { id:'conno', title:'Same root, opposite feeling', badge:'Tune', color:'var(--phys-source)',
+    scenario:{ word:'malediction', reveal:true },
+    hint:'Switch between <b>malediction</b> and <b>benediction</b>, then click <i>Reveal the meaning</i> on each — watch the connotation dot jump from one end to the other.',
+    html:`
+      <span class="badge" style="background:var(--phys-source)">Connotation</span>
+      <h2>The prefix can change the <i>feeling</i></h2>
+      <p class="lead">7.RV.1.F: words can be built alike yet carry very different feelings (connotation).</p>
+      <div class="phase"><b>①</b> Predict</div>
+      <div class="qlabel"><b>Malediction</b> and <b>benediction</b> both use the root <span class="m-root">dict</span> (say). Their feelings are…</div>
+      <label class="option"><input type="radio" name="c1" value="mal- neg / bene- pos" data-q="conno_predict" data-label="Malediction vs. benediction feelings are…" data-correct="true">malediction = negative; benediction = positive</label>
+      <label class="option"><input type="radio" name="c1" value="both neutral" data-q="conno_predict" data-label="Malediction vs. benediction feelings are…">both are neutral</label>
+      <label class="option"><input type="radio" name="c1" value="reversed" data-q="conno_predict" data-label="Malediction vs. benediction feelings are…">malediction = positive; benediction = negative</label>
+      <div class="phase"><b>②</b> Investigate</div>
+      <div class="qlabel">Reveal both words. On the connotation meter, which way does each dot sit?</div>
+      <textarea data-q="conno_obs" data-label="Where each word sits on the connotation meter" placeholder="Malediction sits toward… Benediction sits toward…"></textarea>
+      <div class="phase"><b>③</b> Explain</div>
+      <div class="qlabel">The root (“say”) is identical. How do <span class="m-prefix">mal-</span> and <span class="m-prefix">bene-</span> create such different feelings?</div>
+      <textarea data-q="conno_explain" data-label="Explain how mal- and bene- change the feeling" placeholder="Mal- adds… Bene- adds…"></textarea>`,
+    checkLabel:'Reveal the contrast',
+    reveal:`<h4>Denotation <i>and</i> connotation</h4>
+      Both words denote “a saying.” The <span class="m-prefix">prefix</span> carries the feeling:
+      <b>mal-</b> = bad, so a <b>malediction</b> is a curse (negative); <b>bene-</b> = good, so a <b>benediction</b>
+      is a blessing (positive). Same engine, opposite emotional charge — that's connotation.` },
+
+  { id:'use', title:'Predict it, then use it', badge:'Refine', color:'var(--phys-const)',
+    scenario:{ word:'circumspect' },
+    hint:'Look at <b>circumspect</b> <i>before</i> revealing. Read it as <span class="m-prefix">circum</span> (around) + <span class="m-root">spect</span> (look). Then reveal and check yourself.',
+    html:`
+      <span class="badge" style="background:var(--phys-const)">The real test</span>
+      <h2>The whole move: predict a new word, then own it</h2>
+      <p class="lead">This is the Grade 7 skill in one shot — meet an unfamiliar word, predict it from its parts, confirm with context, then use it. <b>Don't reveal the meaning until after you predict.</b></p>
+      <div class="phase"><b>①</b> Predict (before you reveal!)</div>
+      <div class="qlabel"><b>Circumspect</b> = <span class="m-prefix">circum-</span> (around) + <span class="m-root">spect</span> (look). It probably describes someone who…</div>
+      <label class="option"><input type="radio" name="u1" value="cautious" data-q="use_predict" data-label="Circumspect probably describes someone who…" data-correct="true">looks around carefully before acting — cautious</label>
+      <label class="option"><input type="radio" name="u1" value="loud" data-q="use_predict" data-label="Circumspect probably describes someone who…">talks loudly and often</label>
+      <label class="option"><input type="radio" name="u1" value="fast" data-q="use_predict" data-label="Circumspect probably describes someone who…">moves very quickly</label>
+      <div class="phase"><b>②</b> Investigate</div>
+      <div class="qlabel">Now reveal the meaning and read the example. Did your part-based prediction fit?</div>
+      <label class="option"><input type="radio" name="u2" value="yes" data-q="use_confirm" data-label="Did the parts predict the meaning?" data-correct="true">Yes — the parts pointed right at it</label>
+      <label class="option"><input type="radio" name="u2" value="close" data-q="use_confirm" data-label="Did the parts predict the meaning?">Close — context refined it</label>
+      <label class="option"><input type="radio" name="u2" value="no" data-q="use_confirm" data-label="Did the parts predict the meaning?">No — I had to adjust a lot</label>
+      <div class="phase"><b>③</b> Use it &amp; refine</div>
+      <div class="qlabel">Pick <i>any</i> word from the machine. Record it, write one precise sentence using it, and explain its parts.</div>
+      <div class="grabrow"><input data-q="use_word" data-label="The word I chose to use" placeholder="word"><button class="grab" data-grab="word">⤵ use machine word</button></div>
+      <textarea data-q="use_sentence" data-label="My own precise sentence using the word" placeholder="My sentence…"></textarea>
+      <textarea data-q="use_parts" data-label="How the parts build the meaning" placeholder="The parts build the meaning because…"></textarea>
+      <div class="phase">Self-check — tick everything you actually did</div>
+      <label class="option"><input type="checkbox" data-q="use_self" data-label="Self-check: parts I covered" value="used it correctly">I used the word correctly in context</label>
+      <label class="option"><input type="checkbox" data-q="use_self" data-label="Self-check: parts I covered" value="named the root">I named the root and its meaning</label>
+      <label class="option"><input type="checkbox" data-q="use_self" data-label="Self-check: parts I covered" value="named an affix">I explained at least one prefix or suffix</label>
+      <label class="option"><input type="checkbox" data-q="use_self" data-label="Self-check: parts I covered" value="enough context">My sentence gives enough context to show the meaning</label>`,
+    checkLabel:'Show me a sample',
+    onCheck(root){
+      const v=(root.querySelector('[data-q=use_word]').value||'').trim().toLowerCase();
+      if(!v) return '';
+      const w=WORDS.find(x=>x.word===v);
+      return w
+        ? `<p style="margin:.4rem 0 0;color:var(--phys-relation)"><b>“${w.word}”</b> — root <span class="m-root">${w.root}</span>, a ${w.pos}. Check your sentence shows that meaning: “${w.def}”</p>`
+        : `<p style="margin:.4rem 0 0;color:var(--phys-source)">I don't find “${v}” in the machine — that's fine if it's a word you know, but double-check the spelling against a dictionary.</p>`;
+    },
+    reveal:`<h4>One way to do it well</h4>
+      <div class="sample">I tried to stay <b>circumspect</b> during the debate, looking at every side of the argument before I
+      answered. The prefix <b>circum-</b> means “around” and the root <b>spect</b> means “look,” so circumspect literally
+      means “looking around” — that is, being careful and watchful.</div>
+      <p style="margin:.5rem 0 0">That's the full skill: parts give a strong first guess, context confirms it, and a
+      dictionary settles the exact meaning, spelling, and part of speech (that's why 7.RV.1 lists roots/affixes
+      <i>and</i> reference materials together). Any self-check box you couldn't tick is your gap — go back and add it.</p>` },
+];
+
+/* ---------- persistence ---------- */
+const LS='morpheme-machine-lab-v2';
+let state={ name:'', step:0, answers:{}, seen:[] };
+try{ const raw=localStorage.getItem(LS); if(raw) state=Object.assign(state, JSON.parse(raw)); }catch(e){}
+const save=()=>{ try{ localStorage.setItem(LS, JSON.stringify(state)); }catch(e){} };
+
+/* question index (id -> {label, step}) parsed from step HTML, for the report */
+const QORDER=[], QINDEX={};
+STEPS.forEach(s=>{ const t=document.createElement('div'); t.innerHTML=s.html;
+  t.querySelectorAll('[data-q]').forEach(el=>{ const id=el.dataset.q;
+    if(!(id in QINDEX)){ QINDEX[id]={label:el.dataset.label||id, step:s.title}; QORDER.push(id); } }); });
+
+/* ---------- rendering a station ---------- */
+const stationEl=document.getElementById('station'), progFill=document.getElementById('progFill');
+
+function renderStep(){
+  const s=STEPS[state.step];
+  setMachine(s.scenario);
+  simHint.innerHTML='<b>Try this:</b> '+s.hint;
+
+  stationEl.innerHTML = s.html
+    + `<button class="btn check" id="checkBtn">${s.checkLabel||'Check'}</button>`
+    + `<div class="reveal" id="reveal"></div>`
+    + `<div class="navrow">
+         <button class="btn" id="backBtn">◀ Back</button>
+         <div class="dots" id="dots"></div>
+         <button class="btn primary" id="nextBtn">${state.step===STEPS.length-1?'Finish ▸':'Next ▶'}</button>
+       </div>`;
+
+  restoreAnswers();
+  buildDots();
+  if(state.seen.includes(s.id)) showReveal();
+
+  document.getElementById('backBtn').disabled = state.step===0;
+  document.getElementById('backBtn').onclick = ()=>goto(state.step-1);
+  document.getElementById('nextBtn').onclick = ()=>{
+    if(state.step===STEPS.length-1) openReport(); else goto(state.step+1); };
+  document.getElementById('checkBtn').onclick = onCheck;
+
+  progFill.style.width = ((state.step)/(STEPS.length-1))*100 + '%';
+}
+function buildDots(){
+  const d=document.getElementById('dots'); d.innerHTML='';
+  STEPS.forEach((s,i)=>{ const b=document.createElement('button');
+    b.className='dot'+(i===state.step?' cur':'')+(state.seen.includes(s.id)?' done':'');
+    b.title=s.title; b.onclick=()=>goto(i); d.appendChild(b); });
+}
+function goto(i){ if(i<0||i>=STEPS.length) return; captureStep(); state.step=i; save(); window.scrollTo({top:0,behavior:'smooth'}); renderStep(); }
+
+/* capture / restore typed + selected answers */
+function captureStep(){
+  const groups={};
+  stationEl.querySelectorAll('[data-q]').forEach(el=>{
+    const id=el.dataset.q;
+    if(el.type==='radio'){ if(el.checked) groups[id]=el.value; else if(!(id in groups)) groups[id]=groups[id]||''; }
+    else if(el.type==='checkbox'){ (groups[id]=groups[id]||[]); if(el.checked) groups[id].push(el.value); }
+    else groups[id]=el.value;
+  });
+  Object.assign(state.answers, groups); save();
+}
+function restoreAnswers(){
+  stationEl.querySelectorAll('[data-q]').forEach(el=>{
+    const v=state.answers[el.dataset.q]; if(v==null) return;
+    if(el.type==='radio') el.checked=(el.value===v);
+    else if(el.type==='checkbox') el.checked=Array.isArray(v)&&v.includes(el.value);
+    else el.value=v;
+  });
+}
+stationEl.addEventListener('input', captureStep);
+stationEl.addEventListener('change', captureStep);
+
+/* "use machine word" buttons */
+stationEl.addEventListener('click', e=>{
+  const b=e.target.closest('.grab'); if(!b) return;
+  if(b.dataset.grab==='word'){ const inp=b.parentElement.querySelector('input'); if(inp) inp.value=currentMachineWord(); }
+  captureStep();
+});
+
+/* check / reveal feedback */
+function showReveal(){
+  const s=STEPS[state.step], rev=document.getElementById('reveal');
+  stationEl.querySelectorAll('input[data-correct="true"]').forEach(el=> el.closest('label')?.classList.add('opt-correct'));
+  stationEl.querySelectorAll('input[type=radio]:checked').forEach(el=>{
+    if(el.dataset.correct!=='true') el.closest('label')?.classList.add('opt-wrong'); });
+  let extra=''; if(typeof s.onCheck==='function'){ try{ extra=s.onCheck(stationEl)||''; }catch(e){} }
+  rev.innerHTML = s.reveal + extra; rev.classList.add('show');
+}
+function onCheck(){
+  captureStep();
+  const s=STEPS[state.step];
+  if(!state.seen.includes(s.id)){ state.seen.push(s.id); save(); }
+  showReveal(); buildDots();
+}
+
+/* ---------- name + reset ---------- */
+const nameInput=document.getElementById('studentName');
+nameInput.value=state.name||'';
+nameInput.addEventListener('input', ()=>{ state.name=nameInput.value; save(); });
+document.getElementById('resetLab').onclick=()=>{
+  if(confirm('Clear all your answers and start over?')){ state={name:'',step:0,answers:{},seen:[]};
+    try{ localStorage.removeItem(LS); }catch(e){} nameInput.value=''; renderStep(); } };
+
+/* ---------- report ---------- */
+const labView=document.getElementById('labView'), reportView=document.getElementById('reportView');
+function esc(s){ return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;'); }
+function openReport(){
+  captureStep();
+  const d=new Date().toLocaleDateString();
+  document.getElementById('repHead').textContent=(state.name?state.name+' · ':'')+d;
+  let html='';
+  QORDER.forEach(id=>{ const meta=QINDEX[id]; let a=state.answers[id];
+    if(Array.isArray(a)) a=a.join(', ');
+    html+=`<div class="rep-q"><div class="rl">${esc(meta.label)}</div><div class="ra">${a?esc(a):''}</div></div>`; });
+  document.getElementById('repBody').innerHTML=html;
+  labView.style.display='none'; reportView.classList.add('show');
+  window.scrollTo({top:0,behavior:'smooth'});
+}
+document.getElementById('viewReport').onclick=openReport;
+document.getElementById('backToLab').onclick=()=>{ reportView.classList.remove('show'); labView.style.display=''; renderStep(); };
+document.getElementById('printReport').onclick=()=>window.print();
+
+/* ---------- go ---------- */
+renderStep();
+</script>
+</body>
+</html>
